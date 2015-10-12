@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNet.Identity;
+﻿using Microsoft.AspNet.Identity;
 using Raven.Client;
 using Raven.Client.Embedded;
 using Raven.Client.Indexes;
-using RavenDB.AspNet.Identity;
 
 namespace RavenDB.AspNet.Identity.Tests
 {
