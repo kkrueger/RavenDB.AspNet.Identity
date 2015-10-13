@@ -20,7 +20,7 @@ namespace RavenDB.AspNet.Identity.Tests
 
             using (var docStore = NewDocStore())
             {
-                using (var session = docStore.OpenSession())
+                using (var session = docStore.OpenAsyncSession())
                 {
                     using (var mgr = new UserManager<SimpleAppUser>(new UserStore<SimpleAppUser>(session)))
                     {
@@ -35,7 +35,7 @@ namespace RavenDB.AspNet.Identity.Tests
                         Assert.True(res1.Succeeded);
                         Assert.True(res2.Succeeded);
                     }
-                    session.SaveChanges();
+                    session.SaveChangesAsync();
                 }
 
                 using (var session = docStore.OpenSession())
@@ -63,7 +63,7 @@ namespace RavenDB.AspNet.Identity.Tests
                     }
                 }
 
-                using (var session = docStore.OpenSession())
+                using (var session = docStore.OpenAsyncSession())
                 {
                     using (var mgr = new UserManager<SimpleAppUser>(new UserStore<SimpleAppUser>(session)))
                     {
@@ -82,7 +82,7 @@ namespace RavenDB.AspNet.Identity.Tests
                         Assert.Same(userByName, userByGoogle);
                         Assert.Same(userByName, userByYahoo);
                     }
-                    session.SaveChanges();
+                    session.SaveChangesAsync();
                 }
             }
         }

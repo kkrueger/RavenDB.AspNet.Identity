@@ -14,10 +14,10 @@ namespace RavenDB.AspNet.Identity
         where TUser : IdentityUser
     {
         private bool _disposed;
-        private Func<IDocumentSession> getSessionFunc;
-        private IDocumentSession _session;
+        private Func<IAsyncDocumentSession> getSessionFunc;
+        private IAsyncDocumentSession _session;
 
-        private IDocumentSession session
+        private IAsyncDocumentSession session
         {
             get
             {
@@ -30,85 +30,83 @@ namespace RavenDB.AspNet.Identity
             }
         }
 
-        public UserStore(Func<IDocumentSession> getSession)
+        public UserStore(Func<IAsyncDocumentSession> getSession)
         {
-            this.getSessionFunc = getSession;
+            getSessionFunc = getSession;
         }
 
-        public UserStore(IDocumentSession session)
+        public UserStore(IAsyncDocumentSession session)
         {
-            this._session = session;
+            _session = session;
         }
 
-        public Task CreateAsync(TUser user)
+        public async Task CreateAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
             if (string.IsNullOrEmpty(user.Id))
                 throw new InvalidOperationException("user.Id property must be specified before calling CreateAsync");
 
-            this.session.Store(user);
+            await session.StoreAsync(user).ConfigureAwait(false);
 
             // This model allows us to lookup a user by name in order to get the id
             var userByName = new IdentityUserByUserName(user.Id, user.UserName);
-            this.session.Store(userByName, Util.GetIdentityUserByUserNameId(user.UserName));
-
-            return Task.FromResult(true);
+            await session.StoreAsync(userByName, Util.GetIdentityUserByUserNameId(user.UserName)).ConfigureAwait(false);
+            await session.SaveChangesAsync().ConfigureAwait(false);
         }
 
         public Task DeleteAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
-            var userByName = this.session.Load<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(user.UserName));
+            var userByName = session.LoadAsync<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(user.UserName));
             if (userByName != null)
-                this.session.Delete(userByName);
+                session.Delete(userByName);
 
-            this.session.Delete(user);
-            return Task.FromResult(true);
+            session.Delete(user);
+            return session.SaveChangesAsync();
         }
 
         public Task<TUser> FindByIdAsync(string userId)
         {
-            var user = this.session.Load<TUser>(userId);
-            return Task.FromResult(user);
+            return session.LoadAsync<TUser>(userId);
         }
 
-        public Task<TUser> FindByNameAsync(string userName)
+        public async Task<TUser> FindByNameAsync(string userName)
         {
-            var userByName = this.session.Load<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(userName));
+            var userByName = await session.LoadAsync<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(userName));
             if (userByName == null)
-                return Task.FromResult(default(TUser));
+                return default(TUser);
 
-            return FindByIdAsync(userByName.UserId);
+            return await FindByIdAsync(userByName.UserId);
         }
 
         public Task UpdateAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
-            return Task.FromResult(true);
+            return session.SaveChangesAsync();
         }
 
         private void ThrowIfDisposed()
         {
-            if (this._disposed)
-                throw new ObjectDisposedException(this.GetType().Name);
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
         }
 
         public void Dispose()
         {
-            this._disposed = true;
+            _disposed = true;
         }
 
         public Task AddLoginAsync(TUser user, UserLoginInfo login)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -116,7 +114,7 @@ namespace RavenDB.AspNet.Identity
             {
                 user.Logins.Add(login);
 
-                this.session.Store(new IdentityUserLogin
+                return session.StoreAsync(new IdentityUserLogin
                 {
                     Id = Util.GetLoginId(login),
                     UserId = user.Id,
@@ -128,49 +126,45 @@ namespace RavenDB.AspNet.Identity
             return Task.FromResult(true);
         }
 
-        public Task<TUser> FindAsync(UserLoginInfo login)
+        public async Task<TUser> FindAsync(UserLoginInfo login)
         {
             string loginId = Util.GetLoginId(login);
 
-            var loginDoc = session.Include<IdentityUserLogin>(x => x.UserId)
-                .Load(loginId);
-
-            TUser user = null;
+            var loginDoc = await session.Include<IdentityUserLogin>(x => x.UserId)
+                .LoadAsync(loginId);
 
             if (loginDoc != null)
-                user = this.session.Load<TUser>(loginDoc.UserId);
+                return await session.LoadAsync<TUser>(loginDoc.UserId);
 
-            return Task.FromResult(user);
+            return null;
         }
 
         public Task<IList<UserLoginInfo>> GetLoginsAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
             return Task.FromResult(user.Logins.ToIList());
         }
 
-        public Task RemoveLoginAsync(TUser user, UserLoginInfo login)
+        public async Task RemoveLoginAsync(TUser user, UserLoginInfo login)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
             string loginId = Util.GetLoginId(login);
-            var loginDoc = this.session.Load<IdentityUserLogin>(loginId);
+            var loginDoc = await session.LoadAsync<IdentityUserLogin>(loginId);
             if (loginDoc != null)
-                this.session.Delete(loginDoc);
+                session.Delete(loginDoc);
 
-            user.Logins.RemoveAll(x => x.LoginProvider == login.LoginProvider && x.ProviderKey == login.ProviderKey);
-            
-            return Task.FromResult(0);
+            user.Logins.RemoveAll(x => x.LoginProvider == login.LoginProvider && x.ProviderKey == login.ProviderKey);            
         }
 
         public Task AddClaimAsync(TUser user, Claim claim)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -187,7 +181,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<IList<Claim>> GetClaimsAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -197,7 +191,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task RemoveClaimAsync(TUser user, Claim claim)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -207,7 +201,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<string> GetPasswordHashAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -216,7 +210,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> HasPasswordAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -225,7 +219,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetPasswordHashAsync(TUser user, string passwordHash)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -235,7 +229,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<string> GetSecurityStampAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
             
@@ -244,7 +238,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetSecurityStampAsync(TUser user, string stamp)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -254,7 +248,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task AddToRoleAsync(TUser user, string role)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -266,7 +260,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<IList<string>> GetRolesAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -275,7 +269,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> IsInRoleAsync(TUser user, string role)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -284,7 +278,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task RemoveFromRoleAsync(TUser user, string role)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -295,17 +289,19 @@ namespace RavenDB.AspNet.Identity
 
         public Task<TUser> FindByEmailAsync(string email)
         {
-            this.ThrowIfDisposed();
-            if (email == null)
-                throw new ArgumentNullException("email");
+            throw new NotImplementedException();
+            // This needs work if we want to support it. using Query would depend on an index being present
+            //ThrowIfDisposed();
+            //if (email == null)
+            //    throw new ArgumentNullException("email");
 
-            var result = this.session.Query<TUser>().Where(u => u.Email == email).FirstOrDefault();
-            return Task.FromResult(result);
+            //var result = await session.Query<TUser>().Where(u => u.Email == email).FirstOrDefault().ToListAsync();
+            //return result;
         }
 
         public Task<string> GetEmailAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -314,7 +310,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> GetEmailConfirmedAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -323,7 +319,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetEmailAsync(TUser user, string email)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -334,7 +330,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetEmailConfirmedAsync(TUser user, bool confirmed)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -345,7 +341,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<int> GetAccessFailedCountAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -354,7 +350,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> GetLockoutEnabledAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -363,7 +359,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<DateTimeOffset> GetLockoutEndDateAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -372,7 +368,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<int> IncrementAccessFailedCountAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -383,7 +379,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task ResetAccessFailedCountAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -394,7 +390,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetLockoutEnabledAsync(TUser user, bool enabled)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -405,7 +401,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetLockoutEndDateAsync(TUser user, DateTimeOffset lockoutEnd)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -416,7 +412,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> GetTwoFactorEnabledAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -425,7 +421,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetTwoFactorEnabledAsync(TUser user, bool enabled)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -436,7 +432,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<string> GetPhoneNumberAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -445,7 +441,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task<bool> GetPhoneNumberConfirmedAsync(TUser user)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -454,7 +450,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetPhoneNumberAsync(TUser user, string phoneNumber)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
@@ -465,7 +461,7 @@ namespace RavenDB.AspNet.Identity
 
         public Task SetPhoneNumberConfirmedAsync(TUser user, bool confirmed)
         {
-            this.ThrowIfDisposed();
+            ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
