@@ -56,18 +56,18 @@ namespace RavenDB.AspNet.Identity
             await session.SaveChangesAsync().ConfigureAwait(false);
         }
 
-        public Task DeleteAsync(TUser user)
+        public async Task DeleteAsync(TUser user)
         {
             ThrowIfDisposed();
             if (user == null)
                 throw new ArgumentNullException("user");
 
-            var userByName = session.LoadAsync<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(user.UserName));
+            var userByName = await session.LoadAsync<IdentityUserByUserName>(Util.GetIdentityUserByUserNameId(user.UserName));
             if (userByName != null)
                 session.Delete(userByName);
 
             session.Delete(user);
-            return session.SaveChangesAsync();
+            await session.SaveChangesAsync();
         }
 
         public Task<TUser> FindByIdAsync(string userId)
